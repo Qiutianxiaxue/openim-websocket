@@ -32,7 +32,7 @@
       }
       button {
         padding: 8px 16px;
-        background-color: #4CAF50;
+        background-color: #4caf50;
         color: white;
         border: none;
         cursor: pointer;
@@ -58,58 +58,70 @@
       </div>
     </div>
     <script type="module">
-      import { OpenIMWebSocket } from '../../dist/openim-websocket.es.js';
+      import { OpenIMWebSocket } from "../../dist/openim-websocket.es.js";
 
       const client = new OpenIMWebSocket({
-        url: 'ws://localhost:8081',
+        url: "ws://localhost:8081",
         headers: {
-          'client-type': 'EnterpriseCenterWEB',
-          Appid: '1001',
-          ClientId: '10012',
-          Timestamp: '1739166426',
-          Authorization: 'Bearer QC0bb5fa88eba0f98635389a7'
+          "client-type": "EnterpriseCenterWEB",
+          Appid: "1001",
+          ClientId: "10013112",
+          Timestamp: "1739166426",
+          Authorization: "Bearer QC0bb5fa88eba0f98635389a7",
         },
         reconnectInterval: 3000,
-        maxReconnectAttempts: 5
+        maxReconnectAttempts: 5,
       });
 
-      const statusElement = document.getElementById('status');
-      const messagesElement = document.getElementById('messages');
-      const messageInput = document.getElementById('messageInput');
+      const statusElement = document.getElementById("status");
+      const messagesElement = document.getElementById("messages");
+      const messageInput = document.getElementById("messageInput");
 
       window.sendMessage = () => {
         const content = messageInput.value;
         if (content) {
           client.send({
-            type: 'publish',
-            topic: 'test/444',
-            payload: content
+            type: "publish",
+            topic: "test/444",
+            payload: content,
           });
-          messageInput.value = '';
+          console.log(
+            JSON.stringify({
+              type: "publish",
+              topic: "test/444",
+              payload: content,
+            })
+          );
+          messageInput.value = "";
         }
       };
 
-      client.on('message', (data) => {
-        console.log(data)
-        const messageElement = document.createElement('div');
-        messageElement.textContent = `${new Date().toLocaleTimeString()} - ${data.payload}`;
+      client.on("message", (data) => {
+        console.log(data);
+        const messageElement = document.createElement("div");
+        messageElement.textContent = `${new Date().toLocaleTimeString()} - ${
+          data.payload
+        }`;
         messagesElement.appendChild(messageElement);
         messagesElement.scrollTop = messagesElement.scrollHeight;
       });
 
-      client.connect().then(() => {
-        statusElement.textContent = '已连接';
-        // 添加订阅
-        setTimeout(() => {
-          client.subscribe('test/#');
-        }, 1000);
-      }).catch((error) => {
-        statusElement.textContent = `连接失败: ${error.message}`;
-      });
+      client
+        .connect()
+        .then(() => {
+          statusElement.textContent = "已连接";
+          // 添加订阅
+          setTimeout(() => {
+            client.subscribe("test/#");
+          }, 1000);
+        })
+        .catch((error) => {
+          statusElement.textContent = `连接失败: ${error.message}`;
+        });
 
       // 处理回车键发送消息
-      messageInput.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') {
+      messageInput.addEventListener("keypress", (event) => {
+        if (event.key === "Enter") {
           sendMessage();
         }
       });
