@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenIM WebSocket 示例</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .message-container {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .status {
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OpenIM WebSocket 示例</h1>
+        <div class="status" id="status">未连接</div>
+        <div class="message-container" id="messages"></div>
+        <div class="input-container">
+            <input type="text" id="messageInput" placeholder="输入消息...">
+            <button onclick="sendMessage()">发送</button>
+        </div>
+    </div>
+    <script type="module">
+        import { OpenIMWebSocket } from '../../dist/openim-websocket.es.js';
+
+        const client = new OpenIMWebSocket({
+            url: 'ws://localhost:8080',
+            token: 'your-auth-token',
+            reconnectInterval: 3000,
+            maxReconnectAttempts: 5
+        });
+
+        const statusElement = document.getElementById('status');
+        const messagesElement = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+
+        window.sendMessage = () => {
+            const content = messageInput.value;
+            if (content) {
+                client.send({
+                    type: 'message',
+                    data: {
+                        content,
+                        timestamp: new Date().toISOString()
+                    }
+                });
+                messageInput.value = '';
+            }
+        };
+
+        client.on('message', (data) => {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = `${new Date().toLocaleTimeString()} - ${data.content}`;
+            messagesElement.appendChild(messageElement);
+            messagesElement.scrollTop = messagesElement.scrollHeight;
+        });
+
+        client.on('auth', (data) => {
+            statusElement.textContent = `认证状态: ${data.success ? '成功' : '失败'}`;
+        });
+
+        client.connect().then(() => {
+            statusElement.textContent = '已连接';
+        }).catch((error) => {
+            statusElement.textContent = `连接失败: ${error.message}`;
+        });
+
+        // 处理回车键发送消息
+        messageInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html> 
