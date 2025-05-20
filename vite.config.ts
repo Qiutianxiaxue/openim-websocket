@@ -6,7 +6,7 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
       name: 'OpenIMWebSocket',
-      fileName: 'openim-websocket',
+      fileName: (format) => `openim-websocket.${format}.js`,
       formats: ['es', 'umd']
     },
     rollupOptions: {
@@ -14,7 +14,8 @@ export default defineConfig({
       output: {
         globals: {
           ws: 'ws'
-        }
+        },
+        format: 'es'
       }
     }
   }

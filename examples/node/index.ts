@@ -2,8 +2,14 @@ import { OpenIMWebSocket } from '../../src/index';
 
 // 创建 WebSocket 客户端实例
 const client = new OpenIMWebSocket({
-    url: 'ws://localhost:8080',
-    token: 'your-auth-token',
+    url: 'ws://localhost:8081',
+    headers: {
+        'client-type': 'EnterpriseCenterWEB',
+        Appid: '1001',
+        ClientId: '10012',
+        Timestamp: '1739166426',
+        Authorization: 'Bearer QC0bb5fa88eba0f98635389a7'
+    },
     reconnectInterval: 3000,
     maxReconnectAttempts: 5
 });
@@ -26,22 +32,14 @@ async function start() {
 
         // 发送测试消息
         client.send({
-            type: 'message',
-            data: {
-                content: 'Hello from Node.js!',
-                timestamp: new Date().toISOString()
-            }
+            type: 'test',
+            message: 'Hello WebSocket Server'
         });
 
-        // 模拟定期发送消息
-        setInterval(() => {
-            client.send({
-                type: 'heartbeat',
-                data: {
-                    timestamp: new Date().toISOString()
-                }
-            });
-        }, 30000);
+        // 添加订阅
+        setTimeout(() => {
+            client.subscribe('test/#');
+        }, 1000);
 
     } catch (error) {
         console.error('连接失败:', error);
