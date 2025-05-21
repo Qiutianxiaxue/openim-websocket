@@ -2,7 +2,7 @@ import { OpenIMWebSocket } from '../../src/index.js';
 
 // 创建 WebSocket 客户端实例
 const ws = new OpenIMWebSocket({
-    url: 'ws://localhost:8081',
+    url: 'ws://localhost:38081',
     headers: {
       'client-type': 'EnterpriseCenterWEB',
       Appid: '1001',
