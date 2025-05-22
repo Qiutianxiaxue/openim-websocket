@@ -1,6 +1,6 @@
 {
   "name": "openim-websocket",
-  "version": "1.0.4",
+  "version": "1.0.7",
   "description": "OpenIM WebSocket client library",
   "type": "module",
   "main": "dist/openim-websocket.umd.js",
@@ -18,7 +18,8 @@
     "preview": "vite preview",
     "example:browser": "vite examples/browser",
     "example:node": "node --loader ts-node/esm examples/node/index.ts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "release": "npm version patch --no-git-tag-version && npm publish --access public"
   },
   "keywords": [
     "websocket",
