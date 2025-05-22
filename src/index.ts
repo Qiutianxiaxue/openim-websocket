@@ -12,6 +12,8 @@ export interface WebSocketConfig {
   };
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
+  pingInterval?: number;  // 心跳间隔，默认 10 秒
+  pongTimeout?: number;   // pong 超时时间，默认 5 秒
 }
 
 export interface Message {
@@ -53,11 +55,15 @@ export class OpenIMWebSocket {
   private reconnectAttempts = 0;
   private messageHandlers: Map<string, ((data: any) => void)[]> = new Map();
   private pingInterval: NodeJS.Timeout | null = null;
+  private pongTimeout: NodeJS.Timeout | null = null;
+  private lastPongTime: number = 0;
 
   constructor(config: WebSocketConfig) {
     this.config = {
       reconnectInterval: 3000,
       maxReconnectAttempts: 5,
+      pingInterval: 10000,
+      pongTimeout: 5000,
       ...config,
     };
   }
@@ -144,13 +150,32 @@ export class OpenIMWebSocket {
     this.stopPingInterval();
     this.pingInterval = setInterval(() => {
       this.send({ type: "ping" });
-    }, 10000);
+      this.startPongTimeout();
+    }, this.config.pingInterval);
+  }
+
+  private startPongTimeout() {
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout);
+    }
+    this.pongTimeout = setTimeout(() => {
+      const now = Date.now();
+      if (now - this.lastPongTime > this.config.pongTimeout!) {
+        console.error("Pong timeout, reconnecting...");
+        this.disconnect();
+        this.handleReconnect();
+      }
+    }, this.config.pongTimeout);
   }
 
   private stopPingInterval() {
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
+    }
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout);
+      this.pongTimeout = null;
     }
   }
 
@@ -200,6 +225,11 @@ export class OpenIMWebSocket {
   }
 
   private handleMessage(message: Message): void {
+    if (message.type === "pong") {
+      this.lastPongTime = Date.now();
+      return;
+    }
+    
     const handlers = this.messageHandlers.get(message.type);
     if (handlers) {
       if (typeof message === "string") {
