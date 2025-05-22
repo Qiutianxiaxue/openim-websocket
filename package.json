@@ -1,6 +1,6 @@
 {
   "name": "openim-websocket",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "OpenIM WebSocket client library",
   "type": "module",
   "main": "dist/openim-websocket.umd.js",
@@ -32,12 +32,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Qiutianxiax/openim-websocket.git"
+    "url": "git+https://github.com/Qiutianxiaxue/openim-websocket.git"
   },
   "bugs": {
-    "url": "https://github.com/Qiutianxiax/openim-websocket/issues"
+    "url": "https://github.com/Qiutianxiaxue/openim-websocket/issues"
   },
-  "homepage": "https://github.com/Qiutianxiax/openim-websocket#readme",
+  "homepage": "https://github.com/Qiutianxiaxue/openim-websocket#readme",
   "devDependencies": {
     "typescript": "^5.0.2",
     "vite": "^5.0.0",
