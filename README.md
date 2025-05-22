@@ -29,10 +29,26 @@ await client.connect();
 client.on('message', (data) => {
   console.log('Received message:', data);
 });
-
+// 监听查询结果消息
+client.on('service', (data) => {
+  console.log('Received service:', data);
+});
+// 订阅消息
+client.subscribe("test/#");
+// 取消消息订阅
+client.unsubscribe("test/#");
 // 发送消息
 client.send({
-  type: 'message',
+  type: 'publish',
+  topic:"test/1111"
+  data: {
+    content: 'Hello, World!'
+  }
+});
+// 发送数据查询或者更新，请参考在线文档
+client.send({
+  type: 'service',
+  topic:"Service/status"
   data: {
     content: 'Hello, World!'
   }
@@ -52,12 +68,12 @@ client.disconnect();
 
 ## 配置选项
 
-| 选项 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| url | string | - | WebSocket 服务器地址 |
-| token | string | - | 认证令牌 |
-| reconnectInterval | number | 3000 | 重连间隔（毫秒） |
-| maxReconnectAttempts | number | 5 | 最大重连次数 |
+| 选项                 | 类型   | 默认值 | 描述                 |
+| -------------------- | ------ | ------ | -------------------- |
+| url                  | string | -      | WebSocket 服务器地址 |
+| token                | string | -      | 认证令牌             |
+| reconnectInterval    | number | 3000   | 重连间隔（毫秒）     |
+| maxReconnectAttempts | number | 5      | 最大重连次数         |
 
 ## 许可证
 

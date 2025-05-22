@@ -1,66 +1,60 @@
-import { OpenIMWebSocket } from '../../src/index.js';
+import { OpenIMWebSocket } from "../../src/index.js";
 
 // 创建 WebSocket 客户端实例
 const ws = new OpenIMWebSocket({
-    url: 'ws://localhost:38081',
-    headers: {
-      'client-type': 'EnterpriseCenterWEB',
-      Appid: '1001',
-      ClientId: '1001112',
-      Timestamp: '1739166426',
-      Authorization: 'Bearer QC0bb5fa88eba0f98635389a7'
-    },
-    reconnectInterval: 3000,
-    maxReconnectAttempts: 5
+  url: "ws://localhost:38081",
+  headers: {
+    "client-type": "EnterpriseCenterWEB",
+    Appid: "1001",
+    ClientId: "1001112",
+    Timestamp: "1739166426",
+    Authorization: "Bearer QC0bb5fa88eba0f98635389a7",
+  },
+  reconnectInterval: 3000,
+  maxReconnectAttempts: 5,
 });
 
 // 监听消息
-ws.on('message', (data) => {
-    console.log('Received message:', data);
-});
-
-// 监听认证结果
-ws.on('auth', (data) => {
-    console.log('认证结果:', data);
+ws.on("message", (data) => {
+  console.log("Received message:", data);
 });
 
 // 监听错误
-ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
+ws.on("error", (error) => {
+  console.error("WebSocket error:", error);
 });
 
 // 监听关闭
-ws.on('close', () => {
-    console.log('WebSocket closed');
+ws.on("close", () => {
+  console.log("WebSocket closed");
 });
 
 // 连接服务器
 async function start() {
-    try {
-        await ws.connect();
-        console.log('Connected to WebSocket server');
+  try {
+    await ws.connect();
+    console.log("Connected to WebSocket server");
 
-        // 发送测试消息
-        ws.send({
-            type: 'test',
-            message: 'Hello WebSocket Server'
-        });
-
-        // 添加订阅
-        setTimeout(() => {
-            ws.subscribe('test/#');
-        }, 1000);
-
-    } catch (error) {
-        console.error('Failed to connect:', error);
-    }
+    // 添加订阅
+    setTimeout(() => {
+      ws.subscribe("test/#");
+      // 发送测试消息
+      ws.send({
+        type: "publish",
+        topic: "test/444",
+        message: "Hello WebSocket Server",
+      });
+    }, 1000);
+  } catch (error) {
+    console.error("Failed to connect:", error);
+  }
 }
 
 // 处理进程退出
-process.on('SIGINT', () => {
-    console.log('正在断开连接...');
-    ws.disconnect();
-    process.exit(0);
+process.on("SIGINT", () => {
+  console.log("正在断开连接...");
+  ws.disconnect();
+  process.exit(0);
 });
 
-start(); 
+start();

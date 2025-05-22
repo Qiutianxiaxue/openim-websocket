@@ -172,6 +172,12 @@ export class OpenIMWebSocket {
       topic,
     });
   }
+  public unsubscribe(topic: string): void {
+    this.send({
+      type: "unsubscribe",
+      topic,
+    });
+  }
 
   public on(type: string, handler: (data: any) => void): void {
     if (!this.messageHandlers.has(type)) {
