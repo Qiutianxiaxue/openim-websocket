@@ -1,6 +1,6 @@
 {
   "name": "openim-websocket",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "OpenIM WebSocket client library",
   "type": "module",
   "main": "dist/openim-websocket.umd.js",
