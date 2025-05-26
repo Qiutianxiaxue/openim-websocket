@@ -151,7 +151,8 @@ export class OpenIMWebSocket {
       );
       setTimeout(() => this.connect(), this.config.reconnectInterval);
     } else {
-      console.error("Max reconnection attempts reached");
+      setTimeout(() => this.connect(), 30000); // 30 seconds before next attempt
+      console.error("Max reconnection attempts reached，30 seconds before next attempt");
     }
   }
 
