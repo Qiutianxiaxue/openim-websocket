@@ -79,8 +79,8 @@ export class OpenIMWebSocket {
           browserWs.onopen = () => {
             console.log("WebSocket connected");
             this.reconnectAttempts = 0;
-            this.handleMessage({type: "connected"});
-            this.handleMessage({type: "open"});
+            this.handleMessage({ type: "connected" });
+            this.handleMessage({ type: "open" });
             resolve();
           };
 
@@ -108,8 +108,8 @@ export class OpenIMWebSocket {
           nodeWs.on("open", () => {
             console.log("WebSocket connected");
             this.reconnectAttempts = 0;
-            this.handleMessage({type: "connected"});
-            this.handleMessage({type: "open"});
+            this.handleMessage({ type: "connected" });
+            this.handleMessage({ type: "open" });
             resolve();
           });
 
@@ -125,11 +125,13 @@ export class OpenIMWebSocket {
 
           nodeWs.on("close", () => {
             console.log("WebSocket closed");
+            this.handleMessage({ type: "close" });
             this.handleReconnect();
           });
 
           nodeWs.on("error", (error: Error) => {
             console.error("WebSocket error:", error);
+            this.handleMessage({ type: "error", data: error.message });
             reject(error);
           });
         }
