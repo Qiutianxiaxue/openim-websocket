@@ -1,123 +1,112 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenIM WebSocket 示例</title>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 20px;
-      }
-      .container {
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-      }
-      .message-container {
-        border: 1px solid #ccc;
-        padding: 10px;
-        height: 300px;
-        overflow-y: auto;
-      }
-      .input-container {
-        display: flex;
-        gap: 10px;
-      }
-      input[type="text"] {
-        flex: 1;
-        padding: 8px;
-      }
-      button {
-        padding: 8px 16px;
-        background-color: #4caf50;
-        color: white;
-        border: none;
-        cursor: pointer;
-      }
-      button:hover {
-        background-color: #45a049;
-      }
-      .status {
-        padding: 10px;
-        background-color: #f0f0f0;
-        border-radius: 4px;
-      }
-    </style>
+    <title>OpenIM WebSocket Browser Example</title>
   </head>
   <body>
-    <div class="container">
-      <h1>OpenIM WebSocket 示例</h1>
-      <div class="status" id="status">未连接</div>
-      <div class="message-container" id="messages"></div>
-      <div class="input-container">
-        <input type="text" id="messageInput" placeholder="输入消息..." />
-        <button onclick="sendMessage()">发送</button>
-      </div>
+    <h1>OpenIM WebSocket Browser Example</h1>
+    <div>
+      <button id="connect">Connect</button>
+      <button id="disconnect">Disconnect</button>
+      <button id="send">Send Message</button>
+      <button id="subscribe">Subscribe to Topic</button>
     </div>
+    <div>
+      <h3>Messages:</h3>
+      <div id="messages"></div>
+    </div>
+
     <script type="module">
       import { OpenIMWebSocket } from "../../dist/openim-websocket.es.js";
 
-      const client = new OpenIMWebSocket({
+      const messagesDiv = document.getElementById("messages");
+
+      function addMessage(message) {
+        const div = document.createElement("div");
+        div.textContent = JSON.stringify(message, null, 2);
+        messagesDiv.appendChild(div);
+      }
+
+      const ws = new OpenIMWebSocket({
         url: "ws://localhost:38081",
+        enableLogging: false,
         headers: {
           "client-type": "EnterpriseCenterWEB",
           Appid: "1001",
-          ClientId: "10013112",
-          Timestamp: "1739166426",
-          Authorization: "Bearer QC0bb5fa88eba0f98635389a7",
+          ClientId: "1001112",
+          Timestamp: Date.now().toString(),
+          Authorization: "Bearer QC5586bdd29fbc86b3a39df6b",
         },
         reconnectInterval: 3000,
         maxReconnectAttempts: 5,
       });
 
-      const statusElement = document.getElementById("status");
-      const messagesElement = document.getElementById("messages");
-      const messageInput = document.getElementById("messageInput");
+      ws.on("open", () => {
+        addMessage({ type: "connection", status: "opened" });
+      });
 
-      window.sendMessage = () => {
-        const content = messageInput.value;
-        if (content) {
-          client.send({
-            type: "publish",
-            topic: "test/444",
-            payload: content,
+      ws.on("connected", (data) => {
+        addMessage({ type: "connection", status: "authenticated", data });
+      });
+
+      ws.on("close", () => {
+        addMessage({ type: "connection", status: "closed" });
+      });
+
+      ws.on("error", (error) => {
+        addMessage({ type: "error", error: error.toString() });
+      });
+
+      ws.on("message", (data) => {
+        addMessage({ type: "message", data });
+      });
+
+      ws.on("notification", (data) => {
+        addMessage({ type: "notification", data });
+      });
+
+      document.getElementById("connect").onclick = async () => {
+        try {
+          await ws.connect();
+          addMessage({ type: "action", action: "connect", status: "success" });
+        } catch (error) {
+          addMessage({
+            type: "action",
+            action: "connect",
+            status: "error",
+            error: error.toString(),
           });
-          messageInput.value = "";
         }
       };
 
-      client.on("message", (data) => {
-        console.log(data);
-        const messageElement = document.createElement("div");
-        messageElement.textContent = `${new Date().toLocaleTimeString()} - ${
-          data.payload
-        }`;
-        messagesElement.appendChild(messageElement);
-        messagesElement.scrollTop = messagesElement.scrollHeight;
-      });
+      document.getElementById("disconnect").onclick = () => {
+        ws.disconnect();
+        addMessage({ type: "action", action: "disconnect" });
+      };
 
-      client
-        .connect()
-        .then(() => {
-          statusElement.textContent = "已连接";
-          // 添加订阅
-          setTimeout(() => {
-            client.subscribe("test/#");
-          }, 1000);
-        })
-        .catch((error) => {
-          statusElement.textContent = `连接失败: ${error.message}`;
+      document.getElementById("send").onclick = () => {
+        ws.send({
+          type: "message",
+          message: "Hello from browser!",
+          payload: { timestamp: Date.now() },
         });
+        addMessage({
+          type: "action",
+          action: "send",
+          message: "Hello from browser!",
+        });
+      };
 
-      // 处理回车键发送消息
-      messageInput.addEventListener("keypress", (event) => {
-        if (event.key === "Enter") {
-          sendMessage();
-        }
-      });
+      document.getElementById("subscribe").onclick = () => {
+        ws.subscribe("test-topic");
+        addMessage({
+          type: "action",
+          action: "subscribe",
+          topic: "test-topic",
+        });
+      };
     </script>
   </body>
 </html>
