@@ -8,7 +8,7 @@ const ws = new OpenIMWebSocket({
     Appid: "1001",
     ClientId: "1001112",
     Timestamp: "1739166426",
-    Authorization: "Bearer QC0bb5fa88eba0f98635389a7",
+    Authorization: "Bearer QC5586bdd29fbc86b3a39df6b",
   },
   reconnectInterval: 3000,
   maxReconnectAttempts: 5,
@@ -22,6 +22,10 @@ ws.on("message", (data) => {
 // 监听错误
 ws.on("error", (error) => {
   console.error("WebSocket error:", error);
+});
+// 监听错误
+ws.on("connected", () => {
+  console.log("WebSocket connected");
 });
 
 // 监听关闭

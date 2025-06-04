@@ -52,6 +52,7 @@ export class OpenIMWebSocket {
   private config: WebSocketConfig;
   private reconnectAttempts = 0;
   private messageHandlers: Map<string, ((data: any) => void)[]> = new Map();
+  private isReconnect = true;
 
   constructor(config: WebSocketConfig) {
     this.config = {
@@ -77,10 +78,9 @@ export class OpenIMWebSocket {
         if (isBrowser) {
           const browserWs = this.ws as globalThis.WebSocket;
           browserWs.onopen = () => {
-            console.log("WebSocket connected");
+            console.log("WebSocket opened");
             this.reconnectAttempts = 0;
-            this.handleMessage({type: "connected"});
-            this.handleMessage({type: "open"});
+            this.handleMessage({ type: "open" });
             resolve();
           };
 
@@ -88,7 +88,20 @@ export class OpenIMWebSocket {
             try {
               const message: Message = JSON.parse(event.data);
               console.log("Received message:", message);
-              this.handleMessage(message);
+              // 连接验证错误，不会继续重试
+              if (message.type === "connect_error") {
+                this.isReconnect = false;
+                this.handleMessage({ type: "error", data: message.data });
+              } else if (message.type === "connected") {
+                // 连接成功，授权成功通知，设置为可以重试
+                console.log("WebSocket connected");
+                this.isReconnect = true;
+                this.handleMessage({ type: "connected" });
+              } else {
+                // 其他消息，转发给客户端，可以重试
+                this.isReconnect = true;
+                this.handleMessage(message);
+              }
             } catch (error) {
               console.error("Error parsing message:", error);
             }
@@ -96,44 +109,50 @@ export class OpenIMWebSocket {
 
           browserWs.onclose = () => {
             console.log("WebSocket closed");
-            this.handleMessage({type: "close"});
+            this.handleMessage({ type: "close" });
             this.handleReconnect();
           };
 
           browserWs.onerror = (error: Event) => {
             console.error("WebSocket error:", error);
-            this.handleMessage({type: "error", data: error});
+            this.handleMessage({ type: "error", data: error });
             reject(error);
           };
         } else {
           const nodeWs = this.ws as WebSocket;
           nodeWs.on("open", () => {
-            console.log("WebSocket connected");
+            console.log("WebSocket opened");
             this.reconnectAttempts = 0;
-            this.handleMessage({type: "connected"});
-            this.handleMessage({type: "open"});
+            this.handleMessage({ type: "open" });
             resolve();
           });
 
           nodeWs.on("message", (data: string) => {
             try {
               const message: Message = JSON.parse(data);
-              console.log("Received message:", message);
-              this.handleMessage(message);
+              if (message.type === "connect_error") {
+                this.isReconnect = false;
+                this.handleMessage({ type: "error", data: message });
+              } else if (message.type === "connected") {
+                console.log("WebSocket connected");
+                this.isReconnect = true;
+                this.handleMessage({ type: "connected" });
+              } else {
+                this.isReconnect = true;
+                this.handleMessage(message);
+              }
             } catch (error) {
               console.error("Error parsing message:", error);
             }
           });
 
           nodeWs.on("close", () => {
-            console.log("WebSocket closed");
-            this.handleMessage({type: "close"});
+            this.handleMessage({ type: "close" });
             this.handleReconnect();
           });
 
           nodeWs.on("error", (error: Error) => {
-            console.error("WebSocket error:", error);
-            this.handleMessage({type: "error", data: error});
+            this.handleMessage({ type: "error", data: error });
             reject(error);
           });
         }
@@ -144,6 +163,10 @@ export class OpenIMWebSocket {
   }
 
   private handleReconnect() {
+    // 连接验证错误，不会继续重试
+    if (!this.isReconnect) {
+      return;
+    }
     if (this.reconnectAttempts < (this.config.maxReconnectAttempts || 5)) {
       this.reconnectAttempts++;
       console.log(
@@ -152,7 +175,9 @@ export class OpenIMWebSocket {
       setTimeout(() => this.connect(), this.config.reconnectInterval);
     } else {
       setTimeout(() => this.connect(), 30000); // 30 seconds before next attempt
-      console.error("Max reconnection attempts reached，30 seconds before next attempt");
+      console.error(
+        "Max reconnection attempts reached，30 seconds before next attempt"
+      );
     }
   }
 
