@@ -227,18 +227,34 @@ ws.on("notification", (data) => {
 
 ### 订阅与取消订阅主题
 
-你可以通过 `.subscribe(topic)` 订阅主题，通过 `.unsubscribe(topic)` 取消订阅。
+你可以通过 `.subscribe(topic, handler)` 订阅主题并自动监听该 topic 的所有消息，通过 `.unsubscribe(topic)` 取消订阅并移除所有监听。
 
 **示例：**
 
 ```js
-// 连接成功后订阅主题
-ws.on("connected", () => {
-  ws.subscribe("test-topic");
+// 订阅并监听 topic 消息
+ws.subscribe("test-topic", (msg) => {
+  console.log("收到 test-topic 消息:", msg);
 });
+// 仅订阅消息
+ws.subscribe("test-topic");
 
 // 取消订阅
 ws.unsubscribe("test-topic");
+```
+
+---
+
+### 监听服务类型消息（服务推送）
+
+你可以通过 `.onService(service, handler)` 监听某个服务类型的消息推送。
+
+**示例：**
+
+```js
+ws.onService("user-status", (msg) => {
+  console.log("收到 user-status 服务推送:", msg);
+});
 ```
 
 ---

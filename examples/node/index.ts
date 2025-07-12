@@ -24,7 +24,9 @@ ws.on("connected", (data) => {
   console.log("Connection authenticated:", data);
 
   // 连接成功后订阅主题
-  ws.subscribe("test-topic");
+  ws.subscribe("test-topic", function (data) {
+    console.log("Received data on test-topic:", data);
+  });
 
   // 发送测试消息
   setTimeout(() => {

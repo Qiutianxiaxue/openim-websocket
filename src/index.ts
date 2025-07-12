@@ -17,6 +17,7 @@ export interface WebSocketConfig {
 
 export interface Message {
   type: string;
+  service?: string; // 服务类型
   message?: string;
   topic?: string;
   payload?: any;
@@ -208,9 +209,26 @@ export class OpenIMWebSocket {
    * 处理消息分发
    */
   private processMessage(message: Message): void {
+    // 普通类型事件
     const handlers = this.messageHandlers.get(message.type);
     if (handlers) {
       handlers.forEach((handler) => handler(message));
+    }
+    if (message.service) {
+      // 服务类型事件分发
+      const serviceHandlers = this.messageHandlers.get(
+        `service:${message.service}`
+      );
+      if (serviceHandlers) {
+        serviceHandlers.forEach((handler) => handler(message));
+      }
+    }
+    // topic 事件分发（如有topic字段）
+    if (message.topic) {
+      const topicHandlers = this.messageHandlers.get(`topic:${message.topic}`);
+      if (topicHandlers) {
+        topicHandlers.forEach((handler) => handler(message));
+      }
     }
   }
 
@@ -233,27 +251,66 @@ export class OpenIMWebSocket {
     }
   }
 
-  public subscribe(topic: string): void {
+  /**
+   * 订阅某个topic，并自动注册监听该topic消息
+   * @param topic 订阅主题
+   * @param handler 处理该topic消息的方法
+   */
+  public subscribe(topic: string, handler?: (data: any) => void): void {
+    // 注册监听
+    const eventType = `topic:${topic}`;
+    if (handler) {
+      this.on(eventType, handler);
+    }
+
+    // 发送订阅请求
     this.send({
       type: "subscribe",
       topic,
     });
   }
 
+  /**
+   * 取消订阅某个topic，并移除所有该topic的监听
+   * @param topic 订阅主题
+   */
   public unsubscribe(topic: string): void {
+    // 移除所有监听
+    const eventType = `topic:${topic}`;
+    this.off(eventType);
+    // 发送取消订阅请求
     this.send({
       type: "unsubscribe",
       topic,
     });
   }
-
+  /**
+   * 注册监听某个服务类型的消息
+   * @param service 服务类型
+   * @param handler 处理该服务类型消息的方法
+   */
+  public onService(service: string, handler: (data: any) => void): void {
+    const type = `service:${service}`;
+    if (!this.messageHandlers.has(type)) {
+      this.messageHandlers.set(type, []);
+    }
+    this.messageHandlers.get(type)?.push(handler);
+  }
+  /**
+   * 注销监听某个类型的消息
+   * @param service 类型
+   */
   public on(type: string, handler: (data: any) => void): void {
     if (!this.messageHandlers.has(type)) {
       this.messageHandlers.set(type, []);
     }
     this.messageHandlers.get(type)?.push(handler);
   }
-
+  /**
+   * 注销监听某个类型的消息
+   * @param type 类型
+   * @param handler 可选的处理函数，如果提供则只移除该函数，否则移除所有该类型的监听
+   */
   public off(type: string, handler?: (data: any) => void): void {
     if (!this.messageHandlers.has(type)) {
       return;
