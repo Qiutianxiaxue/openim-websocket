@@ -1,16 +1,18 @@
 {
   "name": "openim-websocket",
-  "version": "1.0.16",
+  "version": "1.0.22",
   "description": "OpenIM WebSocket client library",
   "type": "module",
-  "main": "dist/openim-websocket.cjs.js",
+  "main": "dist/openim-websocket.cjs",
   "module": "dist/openim-websocket.es.js",
-  "unpkg": "dist/openim-websocket.umd.js",
-  "exports": {
-    "import": "./dist/openim-websocket.es.js",
-    "require": "./dist/openim-websocket.cjs.js"
-  },
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/openim-websocket.es.js",
+      "require": "./dist/openim-websocket.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "files": [
     "dist",
     "examples",
@@ -19,7 +21,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build && tsc --emitDeclarationOnly",
     "preview": "vite preview",
     "example:browser": "vite examples/browser",
     "example:node": "node --loader ts-node/esm examples/node/index.ts",
