@@ -122,6 +122,7 @@ export class OpenIMWebSocket {
   private handleOpen(resolve: () => void): void {
     this.log("WebSocket opened");
     this.reconnectAttempts = 0;
+    this.isReconnect = true; // 确保重连状态为true
     this.processMessage({ type: "open" });
     resolve();
   }
@@ -198,10 +199,11 @@ export class OpenIMWebSocket {
       );
       setTimeout(() => this.connect(), this.config.reconnectInterval);
     } else {
-      setTimeout(() => this.connect(), 30000); // 30 seconds before next attempt
       this.logError(
-        "Max reconnection attempts reached，30 seconds before next attempt"
+        `Max reconnection attempts (${this.config.maxReconnectAttempts}) reached. Stopping reconnection.`
       );
+      // 超过最大重试次数，停止重连
+      this.isReconnect = false;
     }
   }
 
@@ -237,6 +239,8 @@ export class OpenIMWebSocket {
       this.logError("WebSocket is not connected");
       return;
     }
+
+    this.log("Sending message:", message);
 
     if (isBrowser) {
       const browserWs = this.ws as globalThis.WebSocket;
@@ -340,5 +344,29 @@ export class OpenIMWebSocket {
       }
       this.ws = null;
     }
+  }
+
+  /**
+   * 重置重连状态，允许重新开始重连
+   */
+  public resetReconnect(): void {
+    this.log("Resetting reconnect state");
+    this.reconnectAttempts = 0;
+    this.isReconnect = true;
+  }
+
+  /**
+   * 获取当前重连状态
+   */
+  public getReconnectStatus(): {
+    attempts: number;
+    maxAttempts: number;
+    isReconnect: boolean;
+  } {
+    return {
+      attempts: this.reconnectAttempts,
+      maxAttempts: this.config.maxReconnectAttempts || 5,
+      isReconnect: this.isReconnect,
+    };
   }
 }
