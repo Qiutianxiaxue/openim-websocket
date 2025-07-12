@@ -172,6 +172,145 @@ interface Message {
 - `examples/browser`: 浏览器环境示例
 - `examples/node`: Node.js 环境示例
 
+## 进阶用法
+
+### 监听消息与事件
+
+你可以通过 `.on(type, handler)` 监听各种事件和消息类型。常见事件包括：
+
+- `open`：连接已建立
+- `connected`：认证通过
+- `close`：连接关闭
+- `error`：发生错误
+- `connect_error`：认证失败
+- `force_offline`：被强制下线
+- `message`：收到普通消息
+- `notification`：收到通知
+
+**示例：**
+
+```js
+ws.on("open", () => {
+  console.log("连接已建立");
+});
+
+ws.on("connected", (data) => {
+  console.log("认证通过", data);
+});
+
+ws.on("close", () => {
+  console.log("连接已关闭");
+});
+
+ws.on("error", (error) => {
+  console.error("发生错误", error);
+});
+
+ws.on("connect_error", (data) => {
+  console.error("认证失败", data);
+});
+
+ws.on("force_offline", (data) => {
+  console.warn("被强制下线", data);
+});
+
+ws.on("message", (data) => {
+  console.log("收到消息", data);
+});
+
+ws.on("notification", (data) => {
+  console.log("收到通知", data);
+});
+```
+
+---
+
+### 订阅与取消订阅主题
+
+你可以通过 `.subscribe(topic)` 订阅主题，通过 `.unsubscribe(topic)` 取消订阅。
+
+**示例：**
+
+```js
+// 连接成功后订阅主题
+ws.on("connected", () => {
+  ws.subscribe("test-topic");
+});
+
+// 取消订阅
+ws.unsubscribe("test-topic");
+```
+
+---
+
+### 发送消息
+
+你可以通过 `.send(message)` 发送自定义消息。
+
+**示例：**
+
+```js
+ws.send({
+  type: "message",
+  message: "Hello from Node.js!",
+  payload: { timestamp: Date.now() },
+});
+```
+
+---
+
+### 完整 Node.js DEMO
+
+```js
+import { OpenIMWebSocket } from "openim-websocket";
+
+const ws = new OpenIMWebSocket({
+  url: "ws://localhost:38081",
+  enableLogging: true,
+  headers: {
+    "client-type": "EnterpriseCenterWEB",
+    Appid: "1001",
+    ClientId: "1001112",
+    Timestamp: Date.now().toString(),
+    Authorization: "Bearer your-token",
+  },
+  reconnectInterval: 3000,
+  maxReconnectAttempts: 5,
+});
+
+ws.on("open", () => {
+  console.log("Connection opened");
+});
+
+ws.on("connected", (data) => {
+  console.log("Connection authenticated:", data);
+  ws.subscribe("test-topic");
+  setTimeout(() => {
+    ws.send({
+      type: "message",
+      message: "Hello from Node.js!",
+      payload: { timestamp: Date.now() },
+    });
+  }, 1000);
+});
+
+ws.on("message", (data) => {
+  console.log("Received message:", data);
+});
+
+ws.connect()
+  .then(() => {
+    console.log("WebSocket connection initiated");
+  })
+  .catch((error) => {
+    console.error("Failed to connect:", error);
+  });
+```
+
+---
+
+如需浏览器 DEMO，可参考 `examples/browser/index.html`，用法基本一致。
+
 ## 许可证
 
 MIT

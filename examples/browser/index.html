@@ -12,6 +12,7 @@
       <button id="disconnect">Disconnect</button>
       <button id="send">Send Message</button>
       <button id="subscribe">Subscribe to Topic</button>
+      <button id="subscribe-custom">Subscribe Custom Topic</button>
     </div>
     <div>
       <h3>Messages:</h3>
@@ -37,7 +38,7 @@
           Appid: "1001",
           ClientId: "1001112",
           Timestamp: Date.now().toString(),
-          Authorization: "Bearer QC5586bdd29fbc86b3a39df6b",
+          Authorization: "Bearer QC2b8fd0ca342c72f857f5f96",
         },
         reconnectInterval: 3000,
         maxReconnectAttempts: 5,
@@ -92,20 +93,24 @@
           message: "Hello from browser!",
           payload: { timestamp: Date.now() },
         });
-        addMessage({
-          type: "action",
-          action: "send",
-          message: "Hello from browser!",
-        });
       };
 
       document.getElementById("subscribe").onclick = () => {
-        ws.subscribe("test-topic");
-        addMessage({
-          type: "action",
-          action: "subscribe",
+        ws.send({
+          type: "publish",
+          payload: {
+            message: "Subscribed to test-topic",
+            timestamp: Date.now(),
+          },
           topic: "test-topic",
         });
+      };
+
+      document.getElementById("subscribe-custom").onclick = () => {
+        const topic = window.prompt("请输入要订阅的 topic：", "");
+        if (topic && topic.trim()) {
+          ws.subscribe(topic.trim());
+        }
       };
     </script>
   </body>
