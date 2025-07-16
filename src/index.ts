@@ -1,5 +1,11 @@
 import WebSocket from "ws";
 
+// 声明全局变量类型
+declare const __VERSION__: string;
+
+// 版本信息 - 通过构建时注入
+const VERSION = __VERSION__;
+
 export interface WebSocketConfig {
   url: string;
   headers?: {
@@ -63,6 +69,9 @@ export class OpenIMWebSocket {
       enableLogging: false,
       ...config,
     };
+
+    // 打印版本信息
+    console.log(`[OpenIMWebSocket] Version: ${VERSION}`);
   }
 
   /**
@@ -180,6 +189,8 @@ export class OpenIMWebSocket {
     if (reject) {
       reject(error);
     }
+    // 错误时也需要触发重连逻辑
+    this.handleReconnect();
   }
 
   /**
@@ -187,8 +198,14 @@ export class OpenIMWebSocket {
    */
   private handleReconnect(): void {
     // 连接验证错误，不会继续重试
-    this.log("handleReconnect", this.isReconnect);
+    this.log(
+      "handleReconnect called, isReconnect:",
+      this.isReconnect,
+      "current attempts:",
+      this.reconnectAttempts
+    );
     if (!this.isReconnect) {
+      this.log("Reconnect disabled, skipping...");
       return;
     }
 
@@ -197,7 +214,10 @@ export class OpenIMWebSocket {
       this.log(
         `Attempting to reconnect (${this.reconnectAttempts}/${this.config.maxReconnectAttempts})...`
       );
-      setTimeout(() => this.connect(), this.config.reconnectInterval);
+      setTimeout(() => {
+        this.log("Executing reconnect attempt...");
+        this.connect();
+      }, this.config.reconnectInterval);
     } else {
       this.logError(
         `Max reconnection attempts (${this.config.maxReconnectAttempts}) reached. Stopping reconnection.`
@@ -278,10 +298,10 @@ export class OpenIMWebSocket {
    * 取消订阅某个topic，并移除所有该topic的监听
    * @param topic 订阅主题
    */
-  public unsubscribe(topic: string): void {
+  public unsubscribe(topic: string, handler?: (data: any) => void): void {
     // 移除所有监听
     const eventType = `topic:${topic}`;
-    this.off(eventType);
+    this.off(eventType, handler);
     // 发送取消订阅请求
     this.send({
       type: "unsubscribe",
@@ -368,5 +388,19 @@ export class OpenIMWebSocket {
       maxAttempts: this.config.maxReconnectAttempts || 5,
       isReconnect: this.isReconnect,
     };
+  }
+
+  /**
+   * 获取库版本号
+   */
+  public static getVersion(): string {
+    return VERSION;
+  }
+
+  /**
+   * 获取实例版本号
+   */
+  public getVersion(): string {
+    return VERSION;
   }
 }
