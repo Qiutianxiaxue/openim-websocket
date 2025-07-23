@@ -55,6 +55,69 @@ const headersToUrlParams = (headers: WebSocketConfig["headers"]): string => {
   );
 };
 
+// Topic 通配符匹配函数
+// 支持 MQTT 风格的通配符：
+// + : 匹配单个层级
+// # : 匹配多个层级（只能在最后）
+// 例如：test/+ 匹配 test/abc，test/# 匹配 test/abc/def
+const matchTopicPattern = (pattern: string, topic: string): boolean => {
+  // 如果模式和主题完全相同，直接返回 true
+  if (pattern === topic) {
+    return true;
+  }
+
+  // 将模式和主题按 / 分割成层级
+  const patternParts = pattern.split('/');
+  const topicParts = topic.split('/');
+
+  // 检查是否有 # 通配符
+  const hashIndex = patternParts.indexOf('#');
+  
+  if (hashIndex !== -1) {
+    // # 只能出现在最后一个位置
+    if (hashIndex !== patternParts.length - 1) {
+      return false;
+    }
+    
+    // 检查 # 之前的所有层级是否匹配
+    for (let i = 0; i < hashIndex; i++) {
+      if (i >= topicParts.length) {
+        return false;
+      }
+      
+      if (patternParts[i] !== '+' && patternParts[i] !== topicParts[i]) {
+        return false;
+      }
+    }
+    
+    // # 匹配剩余的所有层级，所以如果前面都匹配则返回 true
+    return true;
+  }
+
+  // 没有 # 通配符，长度必须相同
+  if (patternParts.length !== topicParts.length) {
+    return false;
+  }
+
+  // 逐层比较
+  for (let i = 0; i < patternParts.length; i++) {
+    const patternPart = patternParts[i];
+    const topicPart = topicParts[i];
+    
+    // + 匹配任意单个层级，直接跳过
+    if (patternPart === '+') {
+      continue;
+    }
+    
+    // 普通字符串必须完全匹配
+    if (patternPart !== topicPart) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 export class OpenIMWebSocket {
   private ws: WebSocket | globalThis.WebSocket | null = null;
   private config: WebSocketConfig;
@@ -247,6 +310,19 @@ export class OpenIMWebSocket {
     }
     // topic 事件分发（如有topic字段）
     if (message.topic) {
+      // 支持 topic 通配符匹配
+      // 通配符 topic 匹配分发
+      for (const [key, handlers] of this.messageHandlers.entries()) {
+        if (key.startsWith("topic:")) {
+          const pattern = key.slice(6); // 去掉 "topic:"
+          if (
+            pattern !== message.topic &&
+            matchTopicPattern(pattern, message.topic!)
+          ) {
+            handlers.forEach((handler) => handler(message));
+          }
+        }
+      }
       const topicHandlers = this.messageHandlers.get(`topic:${message.topic}`);
       if (topicHandlers) {
         topicHandlers.forEach((handler) => handler(message));
