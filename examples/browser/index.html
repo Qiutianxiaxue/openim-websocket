@@ -64,14 +64,14 @@
       window.addEventListener('offline', updateNetworkStatus);
 
       const ws = new OpenIMWebSocket({
-        url: "ws://101.43.131.84:38081",
+        url: "ws://127.0.0.1:38081",
         enableLogging: true, // 启用日志以便调试
         headers: {
-          "client-type": "QichengCloudStorePos",
+          "client-type": "test",
           Appid: "8888",
           ClientId: "1754240000782-mspbc6ce81",
           Timestamp: Date.now().toString(),
-          Authorization: "Bearer QCe8146f7b8adb4e8bb21aa7e",
+          Authorization: "Bearer 1111",
         },
         reconnectInterval: 3000,
         maxReconnectAttempts: 5,
