@@ -13,6 +13,15 @@
       <button id="send">Send Message</button>
       <button id="subscribe">Subscribe to Topic</button>
       <button id="subscribe-custom">Subscribe Custom Topic</button>
+      <button id="status">Check Status</button>
+    </div>
+    <div>
+      <h3>Connection Status:</h3>
+      <div id="status-display">Disconnected</div>
+    </div>
+    <div>
+      <h3>Network Status:</h3>
+      <div id="network-status">Online: <span id="network-online">true</span></div>
     </div>
     <div>
       <h3>Messages:</h3>
@@ -23,41 +32,72 @@
       import { OpenIMWebSocket } from "../../dist/openim-websocket.es.js";
 
       const messagesDiv = document.getElementById("messages");
+      const statusDiv = document.getElementById("status-display");
+      const networkOnlineSpan = document.getElementById("network-online");
 
       function addMessage(message) {
         const div = document.createElement("div");
-        div.textContent = JSON.stringify(message, null, 2);
+        div.style.marginBottom = "5px";
+        div.style.padding = "5px";
+        div.style.backgroundColor = "#f0f0f0";
+        div.style.borderRadius = "3px";
+        div.textContent = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(message, null, 2)}`;
         messagesDiv.appendChild(div);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
       }
 
+      function updateStatus(status) {
+        statusDiv.textContent = status;
+        statusDiv.style.color = status === "Connected" ? "green" : "red";
+      }
+
+      function updateNetworkStatus() {
+        networkOnlineSpan.textContent = navigator.onLine;
+        networkOnlineSpan.style.color = navigator.onLine ? "green" : "red";
+      }
+
+      // 初始化网络状态显示
+      updateNetworkStatus();
+      
+      // 监听网络状态变化
+      window.addEventListener('online', updateNetworkStatus);
+      window.addEventListener('offline', updateNetworkStatus);
+
       const ws = new OpenIMWebSocket({
-        url: "ws://localhost:38081",
-        enableLogging: false,
+        url: "ws://101.43.131.84:38081",
+        enableLogging: true, // 启用日志以便调试
         headers: {
-          "client-type": "EnterpriseCenterWEB",
-          Appid: "1001",
-          ClientId: "1001112",
+          "client-type": "QichengCloudStorePos",
+          Appid: "8888",
+          ClientId: "1754240000782-mspbc6ce81",
           Timestamp: Date.now().toString(),
-          Authorization: "Bearer QC50b992ce499c81b5919f98a",
+          Authorization: "Bearer QCe8146f7b8adb4e8bb21aa7e",
         },
         reconnectInterval: 3000,
         maxReconnectAttempts: 5,
+        heartbeatInterval: 30000, // 30秒心跳间隔
+        heartbeatTimeout: 10000,  // 10秒心跳超时
+        enableNetworkDetection: true, // 启用网络状态检测（浏览器环境下会自动监听网络状态）
       });
 
       ws.on("open", () => {
         addMessage({ type: "connection", status: "opened" });
+        updateStatus("Connecting...");
       });
 
       ws.on("connected", (data) => {
         addMessage({ type: "connection", status: "authenticated", data });
+        updateStatus("Connected");
       });
 
       ws.on("close", () => {
         addMessage({ type: "connection", status: "closed" });
+        updateStatus("Disconnected");
       });
 
       ws.on("error", (error) => {
         addMessage({ type: "error", error: error.toString() });
+        updateStatus("Error");
       });
 
       ws.on("message", (data) => {
@@ -68,8 +108,18 @@
         addMessage({ type: "notification", data });
       });
 
+      // 监听心跳事件
+      ws.on("ping", (data) => {
+        addMessage({ type: "heartbeat", direction: "ping", data });
+      });
+
+      ws.on("pong", (data) => {
+        addMessage({ type: "heartbeat", direction: "pong", data });
+      });
+
       document.getElementById("connect").onclick = async () => {
         try {
+          updateStatus("Connecting...");
           await ws.connect();
           addMessage({ type: "action", action: "connect", status: "success" });
         } catch (error) {
@@ -79,12 +129,14 @@
             status: "error",
             error: error.toString(),
           });
+          updateStatus("Connection Failed");
         }
       };
 
       document.getElementById("disconnect").onclick = () => {
         ws.disconnect();
         addMessage({ type: "action", action: "disconnect" });
+        updateStatus("Disconnected");
       };
 
       document.getElementById("send").onclick = () => {
@@ -111,6 +163,19 @@
         if (topic && topic.trim()) {
           ws.subscribe(topic.trim());
         }
+      };
+
+      document.getElementById("status").onclick = () => {
+        const status = ws.getReconnectStatus();
+        addMessage({ 
+          type: "status", 
+          data: {
+            reconnectAttempts: status.attempts,
+            maxAttempts: status.maxAttempts,
+            isReconnectEnabled: status.isReconnect,
+            networkOnline: navigator.onLine
+          }
+        });
       };
     </script>
   </body>

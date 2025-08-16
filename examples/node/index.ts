@@ -13,6 +13,9 @@ const ws = new OpenIMWebSocket({
   },
   reconnectInterval: 3000,
   maxReconnectAttempts: 5,
+  heartbeatInterval: 30000, // 30秒心跳间隔
+  heartbeatTimeout: 10000, // 10秒心跳超时
+  enableNetworkDetection: true, // 启用网络状态检测
 });
 
 // 监听各种事件
@@ -60,6 +63,15 @@ ws.on("message", (data) => {
 
 ws.on("notification", (data) => {
   console.log("Received notification:", data);
+});
+
+// 监听心跳相关事件（可选）
+ws.on("ping", (data) => {
+  console.log("Heartbeat ping sent:", data);
+});
+
+ws.on("pong", (data) => {
+  console.log("Heartbeat pong received:", data);
 });
 
 // 连接到 WebSocket
