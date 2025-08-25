@@ -262,6 +262,9 @@ export class OpenIMWebSocket {
     // 确保启动心跳检测
     this.startHeartbeat();
 
+    // 确保网络检测正常工作
+    this.setupNetworkDetection();
+
     this.processMessage({ type: "open" });
     resolve();
   }
@@ -277,6 +280,8 @@ export class OpenIMWebSocket {
       // 处理心跳响应
       if (message.type === "pong") {
         this.handleHeartbeatResponse();
+        // 也要分发pong消息，以便临时处理器能收到
+        this.processMessage(message);
         return;
       }
 
@@ -542,7 +547,30 @@ export class OpenIMWebSocket {
     this.isReconnect = false;
     this.connectionState = ConnectionState.DISCONNECTED;
 
-    // 执行清理
+    // 只清理连接相关资源，保留网络检测
+    this.cleanupConnection();
+
+    // 关闭连接
+    if (this.ws) {
+      if (isBrowser) {
+        (this.ws as globalThis.WebSocket).close();
+      } else {
+        (this.ws as WebSocket).close();
+      }
+      this.ws = null;
+    }
+  }
+
+  /**
+   * 完全销毁实例，清理所有资源（包括网络检测）
+   */
+  public destroy(): void {
+    this.log("WebSocket instance destroy requested");
+    this.isManualDisconnect = true;
+    this.isReconnect = false;
+    this.connectionState = ConnectionState.DISCONNECTED;
+
+    // 执行完全清理
     this.cleanup();
 
     // 关闭连接
@@ -642,6 +670,9 @@ export class OpenIMWebSocket {
       return;
     }
 
+    // 先清理现有的网络监听器，避免重复添加
+    this.cleanupNetworkDetection();
+
     // 创建网络状态处理函数
     const handleOnline = () => {
       this.log("Network back online, immediately attempting to reconnect...");
@@ -676,7 +707,15 @@ export class OpenIMWebSocket {
     };
 
     const handleOffline = () => {
-      this.log("Network went offline, but keeping heartbeat to detect connection status");
+      this.log("Network went offline, immediately checking WebSocket connection status");
+
+      // 网络断开时立即做一次ping检测，确认WebSocket连接状态
+      if (this.isConnected()) {
+        this.log("Network offline: sending immediate ping to test connection");
+        this.performImmediatePingTest();
+      } else {
+        this.log("Network offline: WebSocket already disconnected");
+      }
 
       // 网络断开时不停止心跳！心跳是检测连接状态的关键机制
       // this.stopHeartbeat(); // 注释掉这行，保持心跳继续检测
@@ -698,6 +737,8 @@ export class OpenIMWebSocket {
     // 添加事件监听器
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+
+    this.log("Network detection setup completed");
   }
 
   /**
@@ -864,6 +905,58 @@ export class OpenIMWebSocket {
         this.handleReconnect();
       }
     }
+  }
+
+  /**
+   * 立即执行ping检测（用于网络断开时）
+   */
+  private performImmediatePingTest(): void {
+    if (!this.isConnected()) {
+      this.log("Cannot perform ping test: WebSocket not connected");
+      return;
+    }
+
+    this.log("Performing immediate ping test due to network offline");
+
+    // 设置一个标志来跟踪这次特殊的ping测试
+    let immediateTestCompleted = false;
+
+    // 发送ping消息
+    this.send({
+      type: "ping",
+      payload: { timestamp: Date.now(), networkTest: true },
+    });
+
+    // 设置较短的超时时间来快速检测连接状态
+    const immediateTestTimeout = setTimeout(() => {
+      if (!immediateTestCompleted) {
+        immediateTestCompleted = true;
+        this.log("Immediate ping test timeout - network offline likely caused connection loss");
+        // 强制关闭连接，因为网络断开导致连接不可用
+        this.forceCloseConnection();
+      }
+    }, 5000); // 5秒超时，比正常心跳超时更短
+
+    // 临时监听pong响应
+    const tempPongHandler = (message: any) => {
+      if (message.payload && message.payload.networkTest) {
+        immediateTestCompleted = true;
+        clearTimeout(immediateTestTimeout);
+        this.log("Immediate ping test successful - connection still alive despite network offline");
+
+        // 移除临时处理器
+        this.off("pong", tempPongHandler);
+      }
+    };
+
+    this.on("pong", tempPongHandler);
+
+    // 设置清理定时器，确保临时处理器最终被移除
+    setTimeout(() => {
+      if (!immediateTestCompleted) {
+        this.off("pong", tempPongHandler);
+      }
+    }, 6000);
   }
 
   /**
