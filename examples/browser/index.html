@@ -64,19 +64,19 @@
       window.addEventListener('offline', updateNetworkStatus);
 
       const ws = new OpenIMWebSocket({
-        url: "ws://127.0.0.1:38081",
+        url: "ws://10.0.2.219:38081",
         enableLogging: true, // 启用日志以便调试
         headers: {
-          "client-type": "test",
-          Appid: "8888",
-          ClientId: "1754240000782-mspbc6ce81",
+          "client-type": "QichengCloudStorePos",
+          Appid: "1004",
+          ClientId: "1755307876733-fl8tkss4r",
           Timestamp: Date.now().toString(),
-          Authorization: "Bearer 1111",
+          Authorization: "Bearer QC41028bd338c65c8c30b2d0c",
         },
         reconnectInterval: 3000,
         maxReconnectAttempts: 5,
-        heartbeatInterval: 30000, // 30秒心跳间隔
-        heartbeatTimeout: 10000,  // 10秒心跳超时
+        heartbeatInterval: 10000, // 10秒心跳间隔
+        heartbeatTimeout: 1000,  // 1秒心跳超时
         enableNetworkDetection: true, // 启用网络状态检测（浏览器环境下会自动监听网络状态）
       });
 

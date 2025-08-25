@@ -6,6 +6,15 @@ declare const __VERSION__: string;
 // 版本信息 - 通过构建时注入
 const VERSION = __VERSION__;
 
+// 连接状态枚举
+enum ConnectionState {
+  DISCONNECTED = "disconnected",
+  CONNECTING = "connecting",
+  CONNECTED = "connected",
+  RECONNECTING = "reconnecting",
+  ERROR = "error",
+}
+
 export interface WebSocketConfig {
   url: string;
   headers?: {
@@ -127,7 +136,15 @@ export class OpenIMWebSocket {
   private heartbeatTimer: any = null;
   private heartbeatTimeoutTimer: any = null;
   private isHeartbeatAlive = true;
-  private networkStatusHandler: (() => void) | null = null;
+  private networkListeners: {
+    handleOnline: () => void;
+    handleOffline: () => void;
+  } | null = null;
+  private connectionState: ConnectionState = ConnectionState.DISCONNECTED;
+  private reconnectTimer: any = null;
+  private isManualDisconnect = false;
+  private isReconnecting = false; // 防止并发重连
+  private isForceClosing = false; // 标记是否是强制关闭
 
   constructor(config: WebSocketConfig) {
     this.config = {
@@ -139,6 +156,10 @@ export class OpenIMWebSocket {
       enableNetworkDetection: true,
       ...config,
     };
+
+    // 初始化状态
+    this.connectionState = ConnectionState.DISCONNECTED;
+    this.isManualDisconnect = false;
 
     // 打印版本信息
     console.log(`[OpenIMWebSocket] Version: ${VERSION}`);
@@ -168,6 +189,18 @@ export class OpenIMWebSocket {
   public connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        // 防止并发重连
+        if (this.connectionState === ConnectionState.CONNECTING || this.isReconnecting) {
+          this.log("Already connecting or reconnecting, skipping duplicate connect call");
+          return;
+        }
+        this.isReconnecting = true;
+        // 清理现有连接相关资源（保留网络检测）
+        this.cleanupConnection();
+        // 更新连接状态
+        this.connectionState = ConnectionState.CONNECTING;
+        this.isManualDisconnect = false;
+
         const WebSocketImpl = getWebSocket();
         if (isBrowser) {
           const url = this.config.url + headersToUrlParams(this.config.headers);
@@ -180,18 +213,38 @@ export class OpenIMWebSocket {
 
         if (isBrowser) {
           const browserWs = this.ws as globalThis.WebSocket;
-          browserWs.onopen = () => this.handleOpen(resolve);
+          browserWs.onopen = () => {
+            this.isReconnecting = false;
+            this.handleOpen(resolve);
+          };
           browserWs.onmessage = (event: MessageEvent) => this.handleMessage(event.data);
-          browserWs.onclose = () => this.handleClose();
-          browserWs.onerror = (error: Event) => this.handleError(error, reject);
+          browserWs.onclose = (event: CloseEvent) => {
+            this.isReconnecting = false;
+            this.handleClose(event);
+          };
+          browserWs.onerror = (error: Event) => {
+            this.isReconnecting = false;
+            this.handleError(error, reject);
+          };
         } else {
           const nodeWs = this.ws as WebSocket;
-          nodeWs.on("open", () => this.handleOpen(resolve));
+          nodeWs.on("open", () => {
+            this.isReconnecting = false;
+            this.handleOpen(resolve);
+          });
           nodeWs.on("message", (data: string) => this.handleMessage(data));
-          nodeWs.on("close", () => this.handleClose());
-          nodeWs.on("error", (error: Error) => this.handleError(error, reject));
+          nodeWs.on("close", (code: number, reason: string) => {
+            this.isReconnecting = false;
+            this.handleClose({ code, reason });
+          });
+          nodeWs.on("error", (error: Error) => {
+            this.isReconnecting = false;
+            this.handleError(error, reject);
+          });
         }
       } catch (error) {
+        this.isReconnecting = false;
+        this.connectionState = ConnectionState.ERROR;
         reject(error);
       }
     });
@@ -202,9 +255,13 @@ export class OpenIMWebSocket {
    */
   private handleOpen(resolve: () => void): void {
     this.log("WebSocket opened");
+    this.connectionState = ConnectionState.CONNECTED;
     this.reconnectAttempts = 0;
-    this.isReconnect = true; // 确保重连状态为true
-    this.startHeartbeat(); // 启动心跳
+    this.isReconnect = true;
+
+    // 确保启动心跳检测
+    this.startHeartbeat();
+
     this.processMessage({ type: "open" });
     resolve();
   }
@@ -250,11 +307,28 @@ export class OpenIMWebSocket {
   /**
    * 处理连接关闭事件
    */
-  private handleClose(): void {
-    this.log("WebSocket closed");
-    this.stopHeartbeat(); // 停止心跳
-    this.processMessage({ type: "close" });
-    this.handleReconnect();
+  private handleClose(event?: { code?: number; reason?: string }): void {
+    this.log("WebSocket closed", event);
+    this.connectionState = ConnectionState.DISCONNECTED;
+
+    // 停止心跳
+    this.stopHeartbeat();
+
+    // 清理重连定时器
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    this.processMessage({
+      type: "close",
+      payload: event,
+    });
+
+    // 如果不是手动断开且不是强制关闭，则尝试重连
+    if (!this.isManualDisconnect && !this.isForceClosing) {
+      this.handleReconnect();
+    }
   }
 
   /**
@@ -274,24 +348,57 @@ export class OpenIMWebSocket {
    * 处理重连逻辑
    */
   private handleReconnect(): void {
-    // 连接验证错误，不会继续重试
-    this.log("handleReconnect called, isReconnect:", this.isReconnect, "current attempts:", this.reconnectAttempts);
-    if (!this.isReconnect) {
-      this.log("Reconnect disabled, skipping...");
+    this.log("handleReconnect called", {
+      isReconnect: this.isReconnect,
+      attempts: this.reconnectAttempts,
+      maxAttempts: this.config.maxReconnectAttempts,
+      isManualDisconnect: this.isManualDisconnect,
+      connectionState: this.connectionState,
+      networkOnline: isBrowser ? navigator.onLine : true,
+    });
+
+    // 如果是手动断开或不允许重连，则跳过
+    if (this.isManualDisconnect || !this.isReconnect) {
+      this.log("Reconnect disabled or manual disconnect, skipping...");
       return;
     }
 
+    // 在浏览器环境下检查网络状态
+    if (isBrowser && !navigator.onLine) {
+      this.log("Network is offline, postponing reconnect until network recovery");
+      // 网络离线时暂停重连，等待网络恢复事件
+      return;
+    }
+
+    // 检查重连次数
     if (this.reconnectAttempts < (this.config.maxReconnectAttempts || 5)) {
       this.reconnectAttempts++;
+      this.connectionState = ConnectionState.RECONNECTING;
+
+      // 清理之前的重连定时器
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+      }
+
       this.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.config.maxReconnectAttempts})...`);
-      setTimeout(() => {
-        this.log("Executing reconnect attempt...");
-        this.connect();
+      this.reconnectTimer = setTimeout(() => {
+        // 再次检查网络状态和重连状态
+        if (isBrowser && !navigator.onLine) {
+          this.log("Network still offline, skipping reconnect attempt");
+          return;
+        }
+
+        // 防止并发重连
+        if (!this.isReconnecting) {
+          this.connect().catch((error) => {
+            this.logError("Reconnect attempt failed:", error);
+          });
+        }
       }, this.config.reconnectInterval);
     } else {
       this.logError(`Max reconnection attempts (${this.config.maxReconnectAttempts}) reached. Stopping reconnection.`);
-      // 超过最大重试次数，停止重连
       this.isReconnect = false;
+      this.connectionState = ConnectionState.ERROR;
     }
   }
 
@@ -430,11 +537,16 @@ export class OpenIMWebSocket {
   }
 
   public disconnect(): void {
+    this.log("WebSocket disconnect requested");
+    this.isManualDisconnect = true;
+    this.isReconnect = false;
+    this.connectionState = ConnectionState.DISCONNECTED;
+
+    // 执行清理
+    this.cleanup();
+
+    // 关闭连接
     if (this.ws) {
-      this.log("WebSocket disconnect");
-      this.isReconnect = false;
-      this.stopHeartbeat(); // 停止心跳
-      this.cleanupNetworkDetection(); // 清理网络检测
       if (isBrowser) {
         (this.ws as globalThis.WebSocket).close();
       } else {
@@ -451,6 +563,12 @@ export class OpenIMWebSocket {
     this.log("Resetting reconnect state");
     this.reconnectAttempts = 0;
     this.isReconnect = true;
+
+    // 清理重连定时器
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
   }
 
   /**
@@ -466,6 +584,40 @@ export class OpenIMWebSocket {
       maxAttempts: this.config.maxReconnectAttempts || 5,
       isReconnect: this.isReconnect,
     };
+  }
+
+  /**
+   * 获取当前连接状态
+   */
+  public getConnectionState(): ConnectionState {
+    return this.connectionState;
+  }
+
+  /**
+   * 检查是否已连接
+   */
+  public isWebSocketConnected(): boolean {
+    return this.isConnected();
+  }
+
+  /**
+   * 检查网络是否在线
+   */
+  public isNetworkOnline(): boolean {
+    return isBrowser ? navigator.onLine : true;
+  }
+
+  /**
+   * 手动触发重连（忽略网络状态）
+   */
+  public forceReconnect(): void {
+    this.log("Force reconnect requested");
+    this.resetReconnect();
+
+    // 强制重连，即使网络可能离线
+    this.connect().catch((error) => {
+      this.logError("Force reconnect failed:", error);
+    });
   }
 
   /**
@@ -490,36 +642,98 @@ export class OpenIMWebSocket {
       return;
     }
 
-    // 监听网络状态变化
-    this.networkStatusHandler = () => {
-      if (navigator.onLine) {
-        this.log("Network back online, attempting to reconnect...");
-        // 网络恢复时重置重连状态并尝试连接
-        this.resetReconnect();
-        if (!this.isConnected()) {
-          this.connect().catch((error) => {
-            this.logError("Failed to reconnect after network recovery:", error);
-          });
+    // 创建网络状态处理函数
+    const handleOnline = () => {
+      this.log("Network back online, immediately attempting to reconnect...");
+
+      // 网络恢复时立即尝试重连，不等待定时器
+      if (!this.isConnected() && !this.isManualDisconnect && this.isReconnect) {
+        // 清理现有的重连定时器
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = null;
         }
-      } else {
-        this.log("Network went offline");
-        this.stopHeartbeat();
+
+        // 重置重连次数，给网络恢复一个新的机会
+        this.log("Network recovery: resetting reconnect attempts");
+        this.reconnectAttempts = 0;
+
+        // 立即重连
+        this.log("Network recovery triggered immediate reconnect");
+        this.connect().catch((error) => {
+          this.logError("Failed to reconnect after network recovery:", error);
+          // 如果立即重连失败，恢复正常的重连逻辑
+          this.handleReconnect();
+        });
+      } else if (this.isConnected()) {
+        this.log("Network back online, connection already established");
+        // 如果已经连接，确保心跳正常运行
+        if (!this.heartbeatTimer) {
+          this.log("Restarting heartbeat after network recovery");
+          this.startHeartbeat();
+        }
       }
     };
 
-    window.addEventListener("online", this.networkStatusHandler);
-    window.addEventListener("offline", this.networkStatusHandler);
+    const handleOffline = () => {
+      this.log("Network went offline, but keeping heartbeat to detect connection status");
+
+      // 网络断开时不停止心跳！心跳是检测连接状态的关键机制
+      // this.stopHeartbeat(); // 注释掉这行，保持心跳继续检测
+
+      // 暂停重连定时器，等待网络恢复
+      if (this.reconnectTimer) {
+        this.log("Clearing reconnect timer due to network offline");
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+    };
+
+    // 存储处理函数引用
+    this.networkListeners = {
+      handleOnline,
+      handleOffline,
+    };
+
+    // 添加事件监听器
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
   }
 
   /**
    * 清理网络状态检测
    */
   private cleanupNetworkDetection(): void {
-    if (this.networkStatusHandler && isBrowser) {
-      window.removeEventListener("online", this.networkStatusHandler);
-      window.removeEventListener("offline", this.networkStatusHandler);
-      this.networkStatusHandler = null;
+    if (this.networkListeners && isBrowser) {
+      window.removeEventListener("online", this.networkListeners.handleOnline);
+      window.removeEventListener("offline", this.networkListeners.handleOffline);
+      this.networkListeners = null;
     }
+  }
+
+  /**
+   * 清理连接相关资源（保留网络检测）
+   */
+  private cleanupConnection(): void {
+    // 停止心跳
+    this.stopHeartbeat();
+
+    // 清理重连定时器
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /**
+   * 清理所有资源
+   */
+  private cleanup(): void {
+    // 清理连接相关资源
+    this.cleanupConnection();
+
+    // 清理网络检测
+    this.cleanupNetworkDetection();
   }
 
   /**
@@ -539,9 +753,16 @@ export class OpenIMWebSocket {
    * 启动心跳
    */
   private startHeartbeat(): void {
+    // 如果没有配置心跳间隔，则不启动
+    if (!this.config.heartbeatInterval || this.config.heartbeatInterval <= 0) {
+      this.log("Heartbeat disabled or invalid interval");
+      return;
+    }
+
+    // 先停止现有的心跳
     this.stopHeartbeat();
 
-    if (!this.config.heartbeatInterval) return;
+    this.log(`Starting heartbeat with interval: ${this.config.heartbeatInterval}ms`);
 
     this.heartbeatTimer = setInterval(() => {
       if (this.isConnected()) {
@@ -556,12 +777,21 @@ export class OpenIMWebSocket {
         // 设置心跳超时检测
         this.heartbeatTimeoutTimer = setTimeout(() => {
           if (!this.isHeartbeatAlive) {
-            this.log("Heartbeat timeout, closing connection...");
+            this.log("Heartbeat timeout detected, connection appears to be dead");
             this.forceCloseConnection();
           }
         }, this.config.heartbeatTimeout || 10000);
+      } else {
+        // 连接不可用时，检查是否需要重连
+        this.log("Connection not open during heartbeat check");
+        if (!this.isManualDisconnect && this.isReconnect) {
+          this.log("Connection lost detected by heartbeat, triggering reconnect");
+          this.handleReconnect();
+        }
       }
     }, this.config.heartbeatInterval);
+
+    this.log("Heartbeat started successfully");
   }
 
   /**
@@ -569,14 +799,19 @@ export class OpenIMWebSocket {
    */
   private stopHeartbeat(): void {
     if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer as any);
+      this.log("Stopping heartbeat timer");
+      clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
 
     if (this.heartbeatTimeoutTimer) {
-      clearTimeout(this.heartbeatTimeoutTimer as any);
+      this.log("Stopping heartbeat timeout timer");
+      clearTimeout(this.heartbeatTimeoutTimer);
       this.heartbeatTimeoutTimer = null;
     }
+
+    // 重置心跳状态
+    this.isHeartbeatAlive = true;
   }
 
   /**
@@ -587,17 +822,47 @@ export class OpenIMWebSocket {
     this.stopHeartbeat();
 
     if (this.ws) {
+      // 设置强制关闭标志
+      this.isForceClosing = true;
+
       // 临时设置为允许重连
       const wasReconnectEnabled = this.isReconnect;
       this.isReconnect = true;
 
+      // 先手动更新连接状态
+      this.connectionState = ConnectionState.DISCONNECTED;
+
+      // 关闭前清理所有事件，防止多余挂起连接
       if (isBrowser) {
-        (this.ws as globalThis.WebSocket).close();
+        const browserWs = this.ws as globalThis.WebSocket;
+        browserWs.onopen = null;
+        browserWs.onmessage = null;
+        browserWs.onclose = null;
+        browserWs.onerror = null;
+        browserWs.close();
       } else {
-        (this.ws as WebSocket).close();
+        const nodeWs = this.ws as WebSocket;
+        nodeWs.removeAllListeners && nodeWs.removeAllListeners();
+        nodeWs.close();
       }
 
+      this.ws = null;
       this.isReconnect = wasReconnectEnabled;
+
+      // 手动触发关闭处理逻辑，确保状态正确更新
+      this.log("Force close: manually triggering close handler");
+      this.processMessage({
+        type: "close",
+        payload: { code: 1006, reason: "Force close for reconnection" },
+      });
+
+      // 重置强制关闭标志
+      this.isForceClosing = false;
+
+      // 触发重连
+      if (!this.isManualDisconnect) {
+        this.handleReconnect();
+      }
     }
   }
 
